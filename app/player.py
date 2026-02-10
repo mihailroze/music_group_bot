@@ -11,8 +11,13 @@ from pytgcalls.types import GroupCallConfig
 from pytgcalls.types.stream import AudioQuality, MediaStream, StreamEnded
 
 from app.db import DatabaseRepository
-from app.music import MusicClient, yandex_public_url_from_source
-from app.utils import display_track
+from app.music import (
+    MusicClient,
+    yandex_public_url_from_source,
+    yandex_track_id_from_source,
+    yandex_track_id_from_url,
+)
+from app.utils import display_track, is_url
 from app.voice import VoiceBus, VoiceCommand
 
 
@@ -188,24 +193,59 @@ class VoicePlayer:
         )
 
     async def _play_queue_head(self, chat_id: int) -> None:
-        now_item = await self._repo.get_now(chat_id)
-        if not now_item:
-            await self._bus.set_state(
-                chat_id,
-                status="idle",
-                message="Queue is empty",
-            )
-            self._current_track_id_by_chat.pop(chat_id, None)
-            return
+        # Old DB data or user mistakes may leave non-Yandex links in queue (YouTube, etc.).
+        # Since this project is Yandex-only, auto-skip such entries so playback doesn't get stuck.
+        max_unplayable_skips = 25
+        skipped = 0
+        while True:
+            now_item = await self._repo.get_now(chat_id)
+            if not now_item:
+                await self._bus.set_state(
+                    chat_id,
+                    status="idle",
+                    message="Queue is empty",
+                )
+                self._current_track_id_by_chat.pop(chat_id, None)
+                return
 
-        playable_source = await self._resolve_source_url(now_item)
-        if not playable_source:
-            await self._bus.set_state(
-                chat_id,
-                status="error",
-                message=f"No playable source for: {_track_title(now_item)}",
+            source_url = (now_item.get("source_url") or "").strip()
+            title = (now_item.get("title") or "").strip()
+
+            non_yandex_source = bool(source_url) and yandex_track_id_from_source(source_url) is None
+            title_is_non_yandex_url = (
+                not source_url and bool(title) and is_url(title) and yandex_track_id_from_url(title) is None
             )
-            return
+            if non_yandex_source or title_is_non_yandex_url:
+                removed = await self._repo.pop_now(
+                    chat_id=chat_id,
+                    removed_by=0,
+                    event_type="stream_unplayable",
+                )
+                skipped += 1
+                if skipped >= max_unplayable_skips:
+                    await self._bus.set_state(
+                        chat_id,
+                        status="error",
+                        message="Too many unplayable tracks in a row (non-Yandex links?).",
+                    )
+                    return
+                label = _track_title(removed or now_item)
+                await self._bus.set_state(
+                    chat_id,
+                    status="skipping",
+                    message=f"Skipped unplayable (non-Yandex) track: {label}",
+                )
+                continue
+
+            playable_source = await self._resolve_source_url(now_item)
+            if not playable_source:
+                await self._bus.set_state(
+                    chat_id,
+                    status="error",
+                    message=f"No playable source for: {_track_title(now_item)}",
+                )
+                return
+            break
 
         stream = MediaStream(
             playable_source,
