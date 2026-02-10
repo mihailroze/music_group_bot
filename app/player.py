@@ -11,7 +11,7 @@ from pytgcalls.types import GroupCallConfig
 from pytgcalls.types.stream import AudioQuality, MediaStream, StreamEnded
 
 from app.db import DatabaseRepository
-from app.music import MusicClient
+from app.music import MusicClient, yandex_public_url_from_source
 from app.utils import display_track
 from app.voice import VoiceBus, VoiceCommand
 
@@ -198,8 +198,8 @@ class VoicePlayer:
             self._current_track_id_by_chat.pop(chat_id, None)
             return
 
-        source_url = await self._resolve_source_url(now_item)
-        if not source_url:
+        playable_source = await self._resolve_source_url(now_item)
+        if not playable_source:
             await self._bus.set_state(
                 chat_id,
                 status="error",
@@ -208,7 +208,7 @@ class VoicePlayer:
             return
 
         stream = MediaStream(
-            source_url,
+            playable_source,
             audio_parameters=AudioQuality.HIGH,
         )
         await self._calls.play(
@@ -218,19 +218,20 @@ class VoicePlayer:
         )
 
         self._current_track_id_by_chat[chat_id] = int(now_item["track_id"])
+        public_url = yandex_public_url_from_source(now_item.get("source_url"))
         await self._bus.set_state(
             chat_id,
             status="playing",
             message="Streaming in group voice chat",
             track_title=_track_title(now_item),
-            track_url=source_url,
+            track_url=public_url or playable_source,
             track_id=int(now_item["track_id"]),
         )
 
     async def _resolve_source_url(self, track: dict[str, Any]) -> str | None:
         existing = (track.get("source_url") or "").strip()
         if existing:
-            return existing
+            return await self._music.resolve_source(existing)
 
         query_parts = [track.get("artist"), track.get("title")]
         query = " - ".join(part for part in query_parts if part)
@@ -241,7 +242,7 @@ class VoicePlayer:
 
         looked_up = await self._music.search_track(query)
         if looked_up and looked_up.source_url:
-            return looked_up.source_url
+            return await self._music.resolve_source(looked_up.source_url)
         return None
 
     async def _handle_stream_end(self, chat_id: int) -> None:

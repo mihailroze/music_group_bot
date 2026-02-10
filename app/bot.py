@@ -10,8 +10,15 @@ from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import BotCommand, Message
 
 from app.db import DatabaseRepository
-from app.music import MODE_SEEDS, MusicClient, TrackLookup
-from app.utils import build_fingerprint, display_track, is_url, short_host, split_artist_title
+from app.music import (
+    MODE_SEEDS,
+    MusicClient,
+    TrackLookup,
+    yandex_public_url_from_source,
+    yandex_source_url,
+    yandex_track_id_from_url,
+)
+from app.utils import build_fingerprint, display_track, is_url, short_host
 from app.voice import VoiceBus, VoiceCommand
 
 
@@ -68,7 +75,7 @@ def _format_user_label(user_data: dict[str, Any] | None, fallback_user_id: int) 
 
 
 def _track_url(track_data: dict[str, Any]) -> str | None:
-    return track_data.get("source_url")
+    return yandex_public_url_from_source(track_data.get("source_url"))
 
 
 def _format_track_with_source(track_data: dict[str, Any]) -> str:
@@ -182,30 +189,38 @@ def create_dispatcher(
     async def resolve_track_payload(raw_query: str) -> dict[str, Any]:
         query = raw_query.strip()
         if is_url(query):
-            artist, title = split_artist_title(query)
-            payload = {
-                "source_url": query,
+            track_id = yandex_track_id_from_url(query)
+            if not track_id:
+                raise ValueError(
+                    "Сейчас поддерживается только Яндекс.Музыка.\n"
+                    "Пришли ссылку на трек вида:\n"
+                    "- https://music.yandex.ru/track/123\n"
+                    "- https://music.yandex.ru/album/123/track/456"
+                )
+
+            looked_up = await music.lookup_track(track_id)
+            if looked_up:
+                return _track_lookup_to_payload(looked_up)
+
+            # Fallback: store canonical YM source, metadata may be resolved by player later.
+            title = f"Yandex track {track_id}"
+            return {
+                "source_url": yandex_source_url(track_id),
                 "query_text": query,
-                "artist": artist,
-                "title": title or query,
+                "artist": None,
+                "title": title,
                 "genre": None,
-                "fingerprint": build_fingerprint(artist, title or query),
+                "fingerprint": build_fingerprint(None, f"ym:{track_id}") or f"ym{track_id}",
             }
-            return payload
 
         found = await music.search_track(query)
         if found:
             return _track_lookup_to_payload(found)
 
-        artist, title = split_artist_title(query)
-        return {
-            "source_url": None,
-            "query_text": query,
-            "artist": artist,
-            "title": title or query,
-            "genre": None,
-            "fingerprint": build_fingerprint(artist, title or query),
-        }
+        raise ValueError(
+            "Не смог найти трек в Яндекс.Музыке.\n"
+            "Попробуй другой запрос или пришли ссылку на трек из music.yandex.ru."
+        )
 
     async def resolve_target_user(
         message: Message,
@@ -259,7 +274,11 @@ def create_dispatcher(
     async def add_track_to_queue(message: Message, query: str, to_top: bool) -> None:
         if not message.chat or not message.from_user:
             return
-        payload = await resolve_track_payload(query)
+        try:
+            payload = await resolve_track_payload(query)
+        except ValueError as exc:
+            await message.answer(str(exc))
+            return
         track = await repo.get_or_create_track(payload, added_by=message.from_user.id)
         _, position = await repo.add_queue_item(
             chat_id=message.chat.id,

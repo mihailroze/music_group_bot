@@ -7,6 +7,9 @@ MVP for a music-focused Telegram group with:
 - DJ roles and stats;
 - voice chat player (stream to the whole group voice chat).
 
+Music provider:
+- **Yandex Music only** (links + search).
+
 ## Architecture
 
 Two services are used:
@@ -29,6 +32,7 @@ Two services are used:
 - PostgreSQL (recommended in Railway)
 - Redis (command bus between bot and player)
 - Pyrogram + PyTgCalls for voice streaming
+- yandex-music (Yandex Music API wrapper)
 
 ## Local Run
 
@@ -56,6 +60,7 @@ Common:
 - `DATABASE_URL`
 - `LOG_LEVEL`
 - `REDIS_URL`
+- `YANDEX_MUSIC_TOKEN`
 
 Bot role:
 - `APP_ROLE=bot`
@@ -106,6 +111,7 @@ Create one Railway project with 4 services:
   - `BOT_TOKEN=...`
   - `DATABASE_URL=${{Postgres.DATABASE_URL}}`
   - `REDIS_URL=${{Redis.REDIS_URL}}`
+  - `YANDEX_MUSIC_TOKEN=...`
   - `LOG_LEVEL=INFO`
 
 2. `player` (repo source)
@@ -114,6 +120,7 @@ Create one Railway project with 4 services:
   - `APP_ROLE=player`
   - `DATABASE_URL=${{Postgres.DATABASE_URL}}`
   - `REDIS_URL=${{Redis.REDIS_URL}}`
+  - `YANDEX_MUSIC_TOKEN=...`
   - `TELEGRAM_API_ID=...`
   - `TELEGRAM_API_HASH=...`
   - choose one:
