@@ -4,3 +4,7 @@ asyncpg==0.30.0
 aiosqlite==0.20.0
 httpx==0.28.1
 python-dotenv==1.0.1
+redis==5.3.1
+pyrogram==2.0.106
+py-tgcalls==2.2.11
+yt-dlp==2025.1.26

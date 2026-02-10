@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def _normalize_database_url(raw_url: str) -> str:
+def normalize_database_url(raw_url: str) -> str:
     url = raw_url.strip()
     if not url:
         return "sqlite+aiosqlite:///./data/bot.db"
@@ -46,16 +46,38 @@ def ensure_database_path(database_url: str) -> None:
 
 @dataclass(frozen=True)
 class Settings:
-    bot_token: str
+    bot_token: str | None
     database_url: str
     log_level: str
+    redis_url: str | None
+    target_chat_id: int | None
+    app_role: str
 
     @classmethod
     def from_env(cls) -> "Settings":
-        bot_token = os.getenv("BOT_TOKEN", "").strip()
-        if not bot_token:
-            raise ValueError("Environment variable BOT_TOKEN is required")
+        app_role = os.getenv("APP_ROLE", "bot").strip().lower() or "bot"
 
-        database_url = _normalize_database_url(os.getenv("DATABASE_URL", "").strip())
+        bot_token_raw = os.getenv("BOT_TOKEN", "").strip()
+        if app_role != "player" and not bot_token_raw:
+            raise ValueError("Environment variable BOT_TOKEN is required for bot role")
+        bot_token = bot_token_raw or None
+
+        database_url = normalize_database_url(os.getenv("DATABASE_URL", "").strip())
         log_level = os.getenv("LOG_LEVEL", "INFO").strip().upper()
-        return cls(bot_token=bot_token, database_url=database_url, log_level=log_level)
+        redis_url = os.getenv("REDIS_URL", "").strip() or None
+
+        target_chat_id_raw = os.getenv("TARGET_CHAT_ID", "").strip()
+        target_chat_id: int | None = None
+        if target_chat_id_raw:
+            if not target_chat_id_raw.lstrip("-").isdigit():
+                raise ValueError("TARGET_CHAT_ID must be numeric (example: -1001234567890)")
+            target_chat_id = int(target_chat_id_raw)
+
+        return cls(
+            bot_token=bot_token,
+            database_url=database_url,
+            log_level=log_level,
+            redis_url=redis_url,
+            target_chat_id=target_chat_id,
+            app_role=app_role,
+        )

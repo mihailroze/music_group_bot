@@ -8,3 +8,5 @@ venv/
 data/
 .pytest_cache/
 tools/
+*.session
+*.session-journal

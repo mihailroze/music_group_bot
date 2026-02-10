@@ -84,7 +84,13 @@ class MusicClient:
         artist = row.get("artistName")
         title = row.get("trackName") or row.get("collectionName") or query
         genre = row.get("primaryGenreName")
-        source_url = row.get("trackViewUrl") or row.get("collectionViewUrl") or row.get("artistViewUrl")
+        # previewUrl is directly playable audio and works better for voice streaming.
+        source_url = (
+            row.get("previewUrl")
+            or row.get("trackViewUrl")
+            or row.get("collectionViewUrl")
+            or row.get("artistViewUrl")
+        )
         return TrackLookup(
             artist=artist,
             title=title,

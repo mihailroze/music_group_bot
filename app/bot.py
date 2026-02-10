@@ -12,6 +12,7 @@ from aiogram.types import BotCommand, Message
 from app.db import DatabaseRepository
 from app.music import MODE_SEEDS, MusicClient, TrackLookup
 from app.utils import build_fingerprint, display_track, is_url, short_host, split_artist_title
+from app.voice import VoiceBus, VoiceCommand
 
 
 MODES = {
@@ -24,7 +25,7 @@ MODES = {
 
 HELP_TEXT = """Команды:
 /add <ссылка|запрос> - добавить трек в очередь
-/add_top <ссылка|запрос> - добавить в начало (DJ/admin)
+/add_top <ссылка|запрос> - добавить трек в начало (DJ/admin)
 /queue - показать очередь
 /now - текущий трек
 /skip - голос за skip
@@ -42,7 +43,16 @@ HELP_TEXT = """Команды:
 /stats - общая статистика
 /stats_week - статистика за 7 дней
 /top_users - самые активные по добавлениям
-/top_genres - самые популярные жанры"""
+/top_genres - самые популярные жанры
+
+Voice chat:
+/join - активировать плеер для группы (DJ/admin)
+/play - начать или продолжить стрим в voice chat (DJ/admin)
+/pause - пауза (DJ/admin)
+/resume - продолжить (DJ/admin)
+/stop - остановить и выйти из voice chat (DJ/admin)
+/leave - выйти из voice chat (DJ/admin)
+/vstatus - статус voice-плеера"""
 
 
 def _format_user_label(user_data: dict[str, Any] | None, fallback_user_id: int) -> str:
@@ -81,7 +91,33 @@ def _track_lookup_to_payload(track: TrackLookup) -> dict[str, Any]:
     }
 
 
-def create_dispatcher(repo: DatabaseRepository, music: MusicClient) -> Dispatcher:
+def _render_voice_state(state: dict[str, str]) -> str:
+    if not state:
+        return "Voice player: нет данных (возможно, player-сервис не запущен)."
+
+    status = state.get("status", "unknown")
+    message = state.get("message", "")
+    track_title = state.get("track_title", "")
+    track_url = state.get("track_url", "")
+    updated_at = state.get("updated_at", "-")
+
+    lines = [f"Voice player status: {status}"]
+    if message:
+        lines.append(f"Message: {message}")
+    if track_title:
+        lines.append(f"Track: {track_title}")
+    if track_url:
+        lines.append(f"Source: {track_url}")
+    lines.append(f"Updated at (UTC): {updated_at}")
+    return "\n".join(lines)
+
+
+def create_dispatcher(
+    repo: DatabaseRepository,
+    music: MusicClient,
+    voice_bus: VoiceBus | None = None,
+    target_chat_id: int | None = None,
+) -> Dispatcher:
     dp = Dispatcher()
     router = Router()
 
@@ -110,6 +146,38 @@ def create_dispatcher(repo: DatabaseRepository, music: MusicClient) -> Dispatche
         if await is_admin(message):
             return True
         return await repo.is_dj(message.chat.id, message.from_user.id)
+
+    async def voice_enabled_for_chat(message: Message) -> bool:
+        if not message.chat:
+            return False
+        if voice_bus is None:
+            await message.answer(
+                "Voice player не настроен. Нужен REDIS_URL в bot-сервисе и отдельный player-сервис."
+            )
+            return False
+        if target_chat_id is not None and message.chat.id != target_chat_id:
+            await message.answer(
+                f"Voice player закреплен за другой группой (TARGET_CHAT_ID={target_chat_id})."
+            )
+            return False
+        return True
+
+    async def send_voice_command(
+        message: Message,
+        action: str,
+        payload: dict[str, Any] | None = None,
+    ) -> bool:
+        if not message.chat or not message.from_user or voice_bus is None:
+            return False
+        await voice_bus.publish(
+            VoiceCommand(
+                action=action,
+                chat_id=message.chat.id,
+                requested_by=message.from_user.id,
+                payload=payload or {},
+            )
+        )
+        return True
 
     async def resolve_track_payload(raw_query: str) -> dict[str, Any]:
         query = raw_query.strip()
@@ -164,7 +232,7 @@ def create_dispatcher(repo: DatabaseRepository, music: MusicClient) -> Dispatche
         if token.startswith("@"):
             user_id = await repo.find_user_id_by_username(token)
             if user_id is None:
-                return None, "Не знаю этого username. Пусть пользователь сначала напишет боту любую команду."
+                return None, "Не знаю этого username. Пользователь должен сначала написать боту."
             user_data = await repo.get_user(user_id)
             payload = {
                 "user_id": user_id,
@@ -200,16 +268,15 @@ def create_dispatcher(repo: DatabaseRepository, music: MusicClient) -> Dispatche
             genre=track.get("genre"),
             to_top=to_top,
         )
-        await message.answer(
-            f"Добавил: {_format_track_with_source(track)}\nПозиция в очереди: {position}"
-        )
+        await message.answer(f"Добавил: {_format_track_with_source(track)}\nПозиция в очереди: {position}")
 
     @router.message(CommandStart())
     async def start_handler(message: Message) -> None:
         await touch(message)
         await message.answer(
             "Бот для музыкальной группы готов.\n"
-            "Основные команды: /add, /queue, /skip, /save, /mode, /stats\n\n"
+            "Основные команды: /add, /queue, /skip, /save, /mode, /stats\n"
+            "Voice: /join, /play, /pause, /resume, /stop, /leave, /vstatus\n\n"
             "Полный список: /help"
         )
 
@@ -291,6 +358,7 @@ def create_dispatcher(repo: DatabaseRepository, music: MusicClient) -> Dispatche
             if not removed:
                 await message.answer("Не удалось выполнить skip.")
                 return
+            await send_voice_command(message, "next")
             await message.answer(f"Принудительный skip: {_format_track_with_source(removed)}")
             return
 
@@ -311,19 +379,18 @@ def create_dispatcher(repo: DatabaseRepository, music: MusicClient) -> Dispatche
             if not removed:
                 await message.answer("Трек уже был удален из очереди.")
                 return
-            await message.answer(
-                f"Skip принят ({votes} голосов). Удален: {_format_track_with_source(removed)}"
-            )
+            await send_voice_command(message, "next")
+            await message.answer(f"Skip принят ({votes} голосов). Удален: {_format_track_with_source(removed)}")
             return
 
         if not added:
             await message.answer(
-                f"Ты уже голосовал. Текущий счет: {votes}. Нужно 3 голоса или {required_by_activity} (40% активных)."
+                f"Ты уже голосовал. Сейчас {votes}. Нужно 3 голоса или {required_by_activity} (40% активных)."
             )
             return
 
         await message.answer(
-            f"Голос учтен. Сейчас {votes} голос(ов). Нужно 3 голоса или {required_by_activity} (40% активных)."
+            f"Голос учтен. Сейчас {votes}. Нужно 3 голоса или {required_by_activity} (40% активных)."
         )
 
     @router.message(Command("save"))
@@ -380,10 +447,9 @@ def create_dispatcher(repo: DatabaseRepository, music: MusicClient) -> Dispatche
         args = (command.args or "").strip().lower()
         if not args:
             current = await repo.get_mode(message.chat.id)
-            available = ", ".join(MODES.keys())
             await message.answer(
                 f"Текущий режим: {current}\n"
-                f"Доступные режимы: {available}\n"
+                "Доступные режимы: work, party, chill, road\n"
                 "Используй: /mode <режим>"
             )
             return
@@ -417,8 +483,7 @@ def create_dispatcher(repo: DatabaseRepository, music: MusicClient) -> Dispatche
             return
         lines = [f"Рекомендации для режима {mode}:"]
         for index, rec in enumerate(recs, start=1):
-            line = display_track({"artist": rec.artist, "title": rec.title})
-            lines.append(f"{index}. {line}")
+            lines.append(f"{index}. {display_track({'artist': rec.artist, 'title': rec.title})}")
         await message.answer("\n".join(lines))
 
     @router.message(Command("set_start"))
@@ -593,6 +658,92 @@ def create_dispatcher(repo: DatabaseRepository, music: MusicClient) -> Dispatche
             lines.append(f"{index}. {row['genre']} - {row['count']}")
         await message.answer("\n".join(lines))
 
+    @router.message(Command("join"))
+    async def join_handler(message: Message) -> None:
+        await touch(message)
+        if not message.chat:
+            return
+        if not await is_dj_or_admin(message):
+            await message.answer("Команда доступна только DJ или администраторам.")
+            return
+        if not await voice_enabled_for_chat(message):
+            return
+        await send_voice_command(message, "join")
+        await message.answer(
+            "Команда отправлена player-сервису. Запусти /play, чтобы начать стрим в voice chat."
+        )
+
+    @router.message(Command("play"))
+    async def play_handler(message: Message) -> None:
+        await touch(message)
+        if not message.chat:
+            return
+        if not await is_dj_or_admin(message):
+            await message.answer("Команда доступна только DJ или администраторам.")
+            return
+        if not await voice_enabled_for_chat(message):
+            return
+        now_item = await repo.get_now(message.chat.id)
+        if not now_item:
+            await message.answer("Очередь пуста. Добавь трек через /add.")
+            return
+        await send_voice_command(message, "play")
+        await message.answer("Запрос на старт стрима отправлен player-сервису.")
+
+    @router.message(Command("pause"))
+    async def pause_handler(message: Message) -> None:
+        await touch(message)
+        if not await is_dj_or_admin(message):
+            await message.answer("Команда доступна только DJ или администраторам.")
+            return
+        if not await voice_enabled_for_chat(message):
+            return
+        await send_voice_command(message, "pause")
+        await message.answer("Запрос на паузу отправлен.")
+
+    @router.message(Command("resume"))
+    async def resume_handler(message: Message) -> None:
+        await touch(message)
+        if not await is_dj_or_admin(message):
+            await message.answer("Команда доступна только DJ или администраторам.")
+            return
+        if not await voice_enabled_for_chat(message):
+            return
+        await send_voice_command(message, "resume")
+        await message.answer("Запрос на продолжение отправлен.")
+
+    @router.message(Command("stop"))
+    async def stop_handler(message: Message) -> None:
+        await touch(message)
+        if not await is_dj_or_admin(message):
+            await message.answer("Команда доступна только DJ или администраторам.")
+            return
+        if not await voice_enabled_for_chat(message):
+            return
+        await send_voice_command(message, "stop")
+        await message.answer("Запрос на остановку отправлен.")
+
+    @router.message(Command("leave"))
+    async def leave_handler(message: Message) -> None:
+        await touch(message)
+        if not await is_dj_or_admin(message):
+            await message.answer("Команда доступна только DJ или администраторам.")
+            return
+        if not await voice_enabled_for_chat(message):
+            return
+        await send_voice_command(message, "leave")
+        await message.answer("Запрос на выход из voice chat отправлен.")
+
+    @router.message(Command("vstatus"))
+    async def voice_status_handler(message: Message) -> None:
+        await touch(message)
+        if not message.chat:
+            return
+        if not await voice_enabled_for_chat(message):
+            return
+        state = await voice_bus.get_state(message.chat.id) if voice_bus else {}
+        await message.answer(_render_voice_state(state))
+
     dp.include_router(router)
     return dp
 
@@ -607,6 +758,9 @@ def get_default_commands() -> list[BotCommand]:
         BotCommand(command="playlist", description="Плейлист группы"),
         BotCommand(command="mode", description="Установить режим"),
         BotCommand(command="recommend", description="Показать рекомендации"),
+        BotCommand(command="join", description="Подготовить voice-плеер"),
+        BotCommand(command="play", description="Старт стрима в voice chat"),
+        BotCommand(command="vstatus", description="Статус voice-плеера"),
         BotCommand(command="stats", description="Статистика"),
         BotCommand(command="help", description="Все команды"),
     ]
