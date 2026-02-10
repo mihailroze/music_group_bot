@@ -65,10 +65,12 @@ Player role:
 - `APP_ROLE=player`
 - `TELEGRAM_API_ID`
 - `TELEGRAM_API_HASH`
-- `ASSISTANT_SESSION_STRING`
+- one of:
+  - `ASSISTANT_SESSION_STRING` (user-account assistant mode)
+  - `BOT_TOKEN` (assistant-bot mode, no manual session generation)
 - `TARGET_CHAT_ID` (optional, lock player to one group)
 
-Generate `ASSISTANT_SESSION_STRING` locally:
+Generate `ASSISTANT_SESSION_STRING` locally (only if you use user-account assistant mode):
 ```bash
 set TELEGRAM_API_ID=...
 set TELEGRAM_API_HASH=...
@@ -114,7 +116,9 @@ Create one Railway project with 4 services:
   - `REDIS_URL=${{Redis.REDIS_URL}}`
   - `TELEGRAM_API_ID=...`
   - `TELEGRAM_API_HASH=...`
-  - `ASSISTANT_SESSION_STRING=...`
+  - choose one:
+    - `ASSISTANT_SESSION_STRING=...`
+    - `BOT_TOKEN=...`
   - `TARGET_CHAT_ID=-100...`
   - `LOG_LEVEL=INFO`
 

@@ -31,7 +31,8 @@ class VoicePlayer:
         music: MusicClient,
         telegram_api_id: int,
         telegram_api_hash: str,
-        assistant_session_string: str,
+        assistant_session_string: str | None = None,
+        bot_token: str | None = None,
         target_chat_id: int | None = None,
     ) -> None:
         self._repo = repo
@@ -39,13 +40,22 @@ class VoicePlayer:
         self._music = music
         self._target_chat_id = target_chat_id
 
-        self._client = Client(
-            name="group_music_player",
-            api_id=telegram_api_id,
-            api_hash=telegram_api_hash,
-            session_string=assistant_session_string,
-            workdir=".",
-        )
+        client_kwargs: dict[str, Any] = {
+            "name": "group_music_player",
+            "api_id": telegram_api_id,
+            "api_hash": telegram_api_hash,
+            "workdir": ".",
+        }
+        if assistant_session_string:
+            client_kwargs["session_string"] = assistant_session_string
+        elif bot_token:
+            # in_memory avoids writing a local session file in stateless environments
+            client_kwargs["bot_token"] = bot_token
+            client_kwargs["in_memory"] = True
+        else:
+            raise ValueError("Player requires assistant_session_string or bot_token")
+
+        self._client = Client(**client_kwargs)
         self._calls = PyTgCalls(self._client)
         self._current_track_id_by_chat: dict[int, int] = {}
         self._running = False

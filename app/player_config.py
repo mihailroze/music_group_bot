@@ -18,7 +18,8 @@ class PlayerSettings:
     redis_url: str
     telegram_api_id: int
     telegram_api_hash: str
-    assistant_session_string: str
+    assistant_session_string: str | None
+    bot_token: str | None
     target_chat_id: int | None
 
     @classmethod
@@ -36,9 +37,12 @@ class PlayerSettings:
         if not telegram_api_hash:
             raise ValueError("Environment variable TELEGRAM_API_HASH is required")
 
-        assistant_session_string = os.getenv("ASSISTANT_SESSION_STRING", "").strip()
-        if not assistant_session_string:
-            raise ValueError("Environment variable ASSISTANT_SESSION_STRING is required")
+        assistant_session_string = os.getenv("ASSISTANT_SESSION_STRING", "").strip() or None
+        bot_token = os.getenv("BOT_TOKEN", "").strip() or None
+        if not assistant_session_string and not bot_token:
+            raise ValueError(
+                "Set ASSISTANT_SESSION_STRING (user mode) or BOT_TOKEN (assistant-bot mode) for player"
+            )
 
         target_chat_id_raw = os.getenv("TARGET_CHAT_ID", "").strip()
         target_chat_id: int | None = None
@@ -57,5 +61,6 @@ class PlayerSettings:
             telegram_api_id=telegram_api_id,
             telegram_api_hash=telegram_api_hash,
             assistant_session_string=assistant_session_string,
+            bot_token=bot_token,
             target_chat_id=target_chat_id,
         )

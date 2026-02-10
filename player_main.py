@@ -27,6 +27,7 @@ async def run_player() -> None:
         telegram_api_id=settings.telegram_api_id,
         telegram_api_hash=settings.telegram_api_hash,
         assistant_session_string=settings.assistant_session_string,
+        bot_token=settings.bot_token,
         target_chat_id=settings.target_chat_id,
     )
 
