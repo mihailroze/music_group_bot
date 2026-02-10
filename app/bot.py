@@ -128,41 +128,93 @@ def create_dispatcher(
     dp = Dispatcher()
     router = Router()
 
-    async def touch(message: Message) -> None:
-        if not message.chat or not message.from_user:
+    def _parse_chat_id_arg(args: str | None) -> int | None:
+        if not args:
+            return None
+        token = args.strip().split()[0]
+        if token.lstrip("-").isdigit():
+            return int(token)
+        return None
+
+    async def resolve_voice_chat_id(message: Message, args: str | None) -> int | None:
+        """
+        In groups: use current chat id.
+        In private messages: use TARGET_CHAT_ID or a numeric chat id from args.
+        """
+        if not message.chat:
+            return None
+
+        if message.chat.type in {"group", "supergroup"}:
+            return message.chat.id
+
+        chat_id = _parse_chat_id_arg(args) or target_chat_id
+        if chat_id is None:
+            await message.answer(
+                "Я могу запускать/управлять эфиром из лички, но мне нужен id группы.\n"
+                "Пример: `/play -1003549746734`\n"
+                "Или задай `TARGET_CHAT_ID` в Railway (bot-сервис).",
+                parse_mode="Markdown",
+            )
+            return None
+        return chat_id
+
+    async def touch_for_chat(message: Message, chat_id: int) -> None:
+        if not message.from_user:
             return
         await repo.register_user_activity(
-            chat_id=message.chat.id,
+            chat_id=chat_id,
             user_id=message.from_user.id,
             username=message.from_user.username,
             full_name=message.from_user.full_name,
         )
 
-    async def is_admin(message: Message) -> bool:
-        if not message.chat or not message.from_user:
+    async def touch(message: Message) -> None:
+        if not message.chat:
+            return
+        await touch_for_chat(message, message.chat.id)
+
+    async def is_admin_in_chat(message: Message, chat_id: int) -> bool:
+        if not message.from_user:
             return False
         try:
-            member = await message.bot.get_chat_member(message.chat.id, message.from_user.id)
+            member = await message.bot.get_chat_member(chat_id, message.from_user.id)
         except TelegramBadRequest:
             return False
         return member.status in {ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR}
 
-    async def is_dj_or_admin(message: Message) -> bool:
-        if not message.chat or not message.from_user:
+    async def is_member_in_chat(message: Message, chat_id: int) -> bool:
+        if not message.from_user:
             return False
-        if await is_admin(message):
-            return True
-        return await repo.is_dj(message.chat.id, message.from_user.id)
+        try:
+            member = await message.bot.get_chat_member(chat_id, message.from_user.id)
+        except TelegramBadRequest:
+            return False
+        return member.status not in {ChatMemberStatus.LEFT, ChatMemberStatus.KICKED}
 
-    async def voice_enabled_for_chat(message: Message) -> bool:
+    async def is_admin(message: Message) -> bool:
         if not message.chat:
             return False
+        return await is_admin_in_chat(message, message.chat.id)
+
+    async def is_dj_or_admin_in_chat(message: Message, chat_id: int) -> bool:
+        if not message.from_user:
+            return False
+        if await is_admin_in_chat(message, chat_id):
+            return True
+        return await repo.is_dj(chat_id, message.from_user.id)
+
+    async def is_dj_or_admin(message: Message) -> bool:
+        if not message.chat:
+            return False
+        return await is_dj_or_admin_in_chat(message, message.chat.id)
+
+    async def voice_enabled_for_chat(message: Message, chat_id: int) -> bool:
         if voice_bus is None:
             await message.answer(
                 "Voice player не настроен. Нужен REDIS_URL в bot-сервисе и отдельный player-сервис."
             )
             return False
-        if target_chat_id is not None and message.chat.id != target_chat_id:
+        if target_chat_id is not None and chat_id != target_chat_id:
             await message.answer(
                 f"Voice player закреплен за другой группой (TARGET_CHAT_ID={target_chat_id})."
             )
@@ -171,15 +223,16 @@ def create_dispatcher(
 
     async def send_voice_command(
         message: Message,
+        chat_id: int,
         action: str,
         payload: dict[str, Any] | None = None,
     ) -> bool:
-        if not message.chat or not message.from_user or voice_bus is None:
+        if not message.from_user or voice_bus is None:
             return False
         await voice_bus.publish(
             VoiceCommand(
                 action=action,
-                chat_id=message.chat.id,
+                chat_id=chat_id,
                 requested_by=message.from_user.id,
                 payload=payload or {},
             )
@@ -377,7 +430,7 @@ def create_dispatcher(
             if not removed:
                 await message.answer("Не удалось выполнить skip.")
                 return
-            await send_voice_command(message, "next")
+            await send_voice_command(message, message.chat.id, "next")
             await message.answer(f"Принудительный skip: {_format_track_with_source(removed)}")
             return
 
@@ -398,7 +451,7 @@ def create_dispatcher(
             if not removed:
                 await message.answer("Трек уже был удален из очереди.")
                 return
-            await send_voice_command(message, "next")
+            await send_voice_command(message, message.chat.id, "next")
             await message.answer(f"Skip принят ({votes} голосов). Удален: {_format_track_with_source(removed)}")
             return
 
@@ -678,89 +731,125 @@ def create_dispatcher(
         await message.answer("\n".join(lines))
 
     @router.message(Command("join"))
-    async def join_handler(message: Message) -> None:
-        await touch(message)
-        if not message.chat:
+    async def join_handler(message: Message, command: CommandObject) -> None:
+        chat_id = await resolve_voice_chat_id(message, command.args)
+        if chat_id is None:
             return
-        if not await is_dj_or_admin(message):
+        await touch_for_chat(message, chat_id)
+        if not await is_member_in_chat(message, chat_id):
+            await message.answer("Ты не участник этой группы.")
+            return
+        if not await is_dj_or_admin_in_chat(message, chat_id):
             await message.answer("Команда доступна только DJ или администраторам.")
             return
-        if not await voice_enabled_for_chat(message):
+        if not await voice_enabled_for_chat(message, chat_id):
             return
-        await send_voice_command(message, "join")
+        await send_voice_command(message, chat_id, "join")
         await message.answer(
             "Команда отправлена player-сервису. Запусти /play, чтобы начать стрим в voice chat."
         )
 
     @router.message(Command("play"))
-    async def play_handler(message: Message) -> None:
-        await touch(message)
-        if not message.chat:
+    async def play_handler(message: Message, command: CommandObject) -> None:
+        chat_id = await resolve_voice_chat_id(message, command.args)
+        if chat_id is None:
             return
-        if not await is_dj_or_admin(message):
+        await touch_for_chat(message, chat_id)
+        if not await is_member_in_chat(message, chat_id):
+            await message.answer("Ты не участник этой группы.")
+            return
+        if not await is_dj_or_admin_in_chat(message, chat_id):
             await message.answer("Команда доступна только DJ или администраторам.")
             return
-        if not await voice_enabled_for_chat(message):
+        if not await voice_enabled_for_chat(message, chat_id):
             return
-        now_item = await repo.get_now(message.chat.id)
+        now_item = await repo.get_now(chat_id)
         if not now_item:
             await message.answer("Очередь пуста. Добавь трек через /add.")
             return
-        await send_voice_command(message, "play")
+        await send_voice_command(message, chat_id, "play")
         await message.answer("Запрос на старт стрима отправлен player-сервису.")
 
     @router.message(Command("pause"))
-    async def pause_handler(message: Message) -> None:
-        await touch(message)
-        if not await is_dj_or_admin(message):
+    async def pause_handler(message: Message, command: CommandObject) -> None:
+        chat_id = await resolve_voice_chat_id(message, command.args)
+        if chat_id is None:
+            return
+        await touch_for_chat(message, chat_id)
+        if not await is_member_in_chat(message, chat_id):
+            await message.answer("Ты не участник этой группы.")
+            return
+        if not await is_dj_or_admin_in_chat(message, chat_id):
             await message.answer("Команда доступна только DJ или администраторам.")
             return
-        if not await voice_enabled_for_chat(message):
+        if not await voice_enabled_for_chat(message, chat_id):
             return
-        await send_voice_command(message, "pause")
+        await send_voice_command(message, chat_id, "pause")
         await message.answer("Запрос на паузу отправлен.")
 
     @router.message(Command("resume"))
-    async def resume_handler(message: Message) -> None:
-        await touch(message)
-        if not await is_dj_or_admin(message):
+    async def resume_handler(message: Message, command: CommandObject) -> None:
+        chat_id = await resolve_voice_chat_id(message, command.args)
+        if chat_id is None:
+            return
+        await touch_for_chat(message, chat_id)
+        if not await is_member_in_chat(message, chat_id):
+            await message.answer("Ты не участник этой группы.")
+            return
+        if not await is_dj_or_admin_in_chat(message, chat_id):
             await message.answer("Команда доступна только DJ или администраторам.")
             return
-        if not await voice_enabled_for_chat(message):
+        if not await voice_enabled_for_chat(message, chat_id):
             return
-        await send_voice_command(message, "resume")
+        await send_voice_command(message, chat_id, "resume")
         await message.answer("Запрос на продолжение отправлен.")
 
     @router.message(Command("stop"))
-    async def stop_handler(message: Message) -> None:
-        await touch(message)
-        if not await is_dj_or_admin(message):
+    async def stop_handler(message: Message, command: CommandObject) -> None:
+        chat_id = await resolve_voice_chat_id(message, command.args)
+        if chat_id is None:
+            return
+        await touch_for_chat(message, chat_id)
+        if not await is_member_in_chat(message, chat_id):
+            await message.answer("Ты не участник этой группы.")
+            return
+        if not await is_dj_or_admin_in_chat(message, chat_id):
             await message.answer("Команда доступна только DJ или администраторам.")
             return
-        if not await voice_enabled_for_chat(message):
+        if not await voice_enabled_for_chat(message, chat_id):
             return
-        await send_voice_command(message, "stop")
+        await send_voice_command(message, chat_id, "stop")
         await message.answer("Запрос на остановку отправлен.")
 
     @router.message(Command("leave"))
-    async def leave_handler(message: Message) -> None:
-        await touch(message)
-        if not await is_dj_or_admin(message):
+    async def leave_handler(message: Message, command: CommandObject) -> None:
+        chat_id = await resolve_voice_chat_id(message, command.args)
+        if chat_id is None:
+            return
+        await touch_for_chat(message, chat_id)
+        if not await is_member_in_chat(message, chat_id):
+            await message.answer("Ты не участник этой группы.")
+            return
+        if not await is_dj_or_admin_in_chat(message, chat_id):
             await message.answer("Команда доступна только DJ или администраторам.")
             return
-        if not await voice_enabled_for_chat(message):
+        if not await voice_enabled_for_chat(message, chat_id):
             return
-        await send_voice_command(message, "leave")
+        await send_voice_command(message, chat_id, "leave")
         await message.answer("Запрос на выход из voice chat отправлен.")
 
     @router.message(Command("vstatus"))
-    async def voice_status_handler(message: Message) -> None:
-        await touch(message)
-        if not message.chat:
+    async def voice_status_handler(message: Message, command: CommandObject) -> None:
+        chat_id = await resolve_voice_chat_id(message, command.args)
+        if chat_id is None:
             return
-        if not await voice_enabled_for_chat(message):
+        await touch_for_chat(message, chat_id)
+        if not await is_member_in_chat(message, chat_id):
+            await message.answer("Ты не участник этой группы.")
             return
-        state = await voice_bus.get_state(message.chat.id) if voice_bus else {}
+        if not await voice_enabled_for_chat(message, chat_id):
+            return
+        state = await voice_bus.get_state(chat_id) if voice_bus else {}
         await message.answer(_render_voice_state(state))
 
     dp.include_router(router)
