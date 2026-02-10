@@ -97,8 +97,8 @@ class MusicClient:
     Yandex Music-only backend.
 
     Notes:
-    - Requires `YANDEX_MUSIC_TOKEN` for search and for downloading full tracks.
-    - In some regions Yandex Music API may return HTTP 451 for catalog/search endpoints.
+    - `YANDEX_MUSIC_TOKEN` is optional. Without it, playback may be limited to previews.
+    - In some regions Yandex Music API may return HTTP 451 for catalog/search endpoints (search/metadata).
     """
 
     def __init__(
@@ -191,9 +191,6 @@ class MusicClient:
         if self._client is not None:
             return self._client
 
-        if not self._token:
-            raise RuntimeError("YANDEX_MUSIC_TOKEN is required for Yandex Music integration")
-
         self._client = YandexMusicClient(token=self._token, language=self._language)
         return self._client
 
@@ -261,11 +258,7 @@ class MusicClient:
         return self._cache_dir / f"{safe_id}.mp3"
 
     def _download_track_sync(self, track_id: str, path: Path) -> str | None:
-        try:
-            client = self._get_client()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Yandex Music client not configured: %s", exc)
-            return None
+        client = self._get_client()
 
         try:
             infos = client.tracks_download_info(track_id)

@@ -60,7 +60,7 @@ Common:
 - `DATABASE_URL`
 - `LOG_LEVEL`
 - `REDIS_URL`
-- `YANDEX_MUSIC_TOKEN`
+- `YANDEX_MUSIC_TOKEN` (optional; needed for full tracks / richer metadata, depending on region)
 
 Bot role:
 - `APP_ROLE=bot`
@@ -111,7 +111,7 @@ Create one Railway project with 4 services:
   - `BOT_TOKEN=...`
   - `DATABASE_URL=${{Postgres.DATABASE_URL}}`
   - `REDIS_URL=${{Redis.REDIS_URL}}`
-  - `YANDEX_MUSIC_TOKEN=...`
+  - `YANDEX_MUSIC_TOKEN=...` (optional)
   - `LOG_LEVEL=INFO`
 
 2. `player` (repo source)
@@ -120,7 +120,7 @@ Create one Railway project with 4 services:
   - `APP_ROLE=player`
   - `DATABASE_URL=${{Postgres.DATABASE_URL}}`
   - `REDIS_URL=${{Redis.REDIS_URL}}`
-  - `YANDEX_MUSIC_TOKEN=...`
+  - `YANDEX_MUSIC_TOKEN=...` (optional)
   - `TELEGRAM_API_ID=...`
   - `TELEGRAM_API_HASH=...`
   - choose one:
