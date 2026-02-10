@@ -94,6 +94,15 @@ python scripts/generate_session.py
 
 Only DJ/admin can run playback control commands.
 
+## Voice Commands (via bot DM)
+
+You can control the voice stream from a private chat with the bot:
+
+- if `TARGET_CHAT_ID` is set on the `bot` service: just send `/join`, `/play`, `/pause`, etc.
+- otherwise: pass chat id as the first argument, e.g. `/play -1001234567890`
+
+Access rules are the same: you must be a member of that group, and DJ/admin for control commands.
+
 ## Important Notes
 
 - Voice stream is visible in the group voice chat (for the whole group).
@@ -112,6 +121,7 @@ Create one Railway project with 4 services:
   - `DATABASE_URL=${{Postgres.DATABASE_URL}}`
   - `REDIS_URL=${{Redis.REDIS_URL}}`
   - `YANDEX_MUSIC_TOKEN=...` (optional)
+  - `TARGET_CHAT_ID=-100...` (optional; enables DM voice control without passing chat id)
   - `LOG_LEVEL=INFO`
 
 2. `player` (repo source)

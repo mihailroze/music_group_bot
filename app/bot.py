@@ -59,7 +59,11 @@ Voice chat:
 /resume - продолжить (DJ/admin)
 /stop - остановить и выйти из voice chat (DJ/admin)
 /leave - выйти из voice chat (DJ/admin)
-/vstatus - статус voice-плеера"""
+/vstatus - статус voice-плеера
+
+Voice chat из лички:
+- если задан TARGET_CHAT_ID: просто пиши /join, /play, /pause и т.д.
+- иначе указывай id группы: например /play -1001234567890"""
 
 
 def _format_user_label(user_data: dict[str, Any] | None, fallback_user_id: int) -> str:
