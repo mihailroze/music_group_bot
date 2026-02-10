@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 from pyrogram import Client
+import pyrogram.errors as pyrogram_errors
 from pytgcalls import PyTgCalls, filters
 from pytgcalls.types import GroupCallConfig
 from pytgcalls.types.stream import AudioQuality, MediaStream, StreamEnded
@@ -20,6 +21,36 @@ logger = logging.getLogger(__name__)
 
 def _track_title(track: dict[str, Any]) -> str:
     return display_track(track)
+
+
+def _ensure_groupcall_forbidden_error() -> None:
+    """
+    py-tgcalls currently imports `GroupcallForbidden` from `pyrogram.errors`,
+    but Pyrogram 2.0.106 doesn't define it. Inject a compatible stub so
+    pytgcalls can import and run.
+    """
+
+    if hasattr(pyrogram_errors, "GroupcallForbidden"):
+        return
+
+    # Best-effort: make it a Forbidden-like RPC error.
+    base = getattr(pyrogram_errors, "Forbidden", Exception)
+
+    class GroupcallForbidden(base):  # type: ignore[misc]
+        ID = "GROUPCALL_FORBIDDEN"
+
+    setattr(pyrogram_errors, "GroupcallForbidden", GroupcallForbidden)
+
+    # Also patch pyrogram's error mapping so RPC errors can resolve to it.
+    try:
+        from pyrogram.errors.exceptions.all import exceptions as _exceptions_map  # type: ignore
+
+        for code in (403, 400):
+            if code in _exceptions_map and "GROUPCALL_FORBIDDEN" not in _exceptions_map[code]:
+                _exceptions_map[code]["GROUPCALL_FORBIDDEN"] = "GroupcallForbidden"
+    except Exception:
+        # If internals change, the import fix above is still enough to avoid crashing.
+        return
 
 
 class VoicePlayer:
@@ -56,6 +87,7 @@ class VoicePlayer:
             raise ValueError("Player requires assistant_session_string or bot_token")
 
         self._client = Client(**client_kwargs)
+        _ensure_groupcall_forbidden_error()
         self._calls = PyTgCalls(self._client)
         self._current_track_id_by_chat: dict[int, int] = {}
         self._running = False
