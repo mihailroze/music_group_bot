@@ -68,6 +68,13 @@ Player role:
 - `ASSISTANT_SESSION_STRING`
 - `TARGET_CHAT_ID` (optional, lock player to one group)
 
+Generate `ASSISTANT_SESSION_STRING` locally:
+```bash
+set TELEGRAM_API_ID=...
+set TELEGRAM_API_HASH=...
+python scripts/generate_session.py
+```
+
 ## Voice Commands (in group)
 
 - `/join` prepare player
