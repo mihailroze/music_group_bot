@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Часть II · Внешний digital-отдел</title>
+  <meta name="description" content="Веб-презентация по второй части бизнес-документа: сайты, боты и автоматизация бизнеса.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=Unbounded:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f4efe3;
+      --paper: rgba(255, 250, 241, 0.84);
+      --panel: rgba(255, 247, 234, 0.9);
+      --ink: #1f2622;
+      --muted: #5e6762;
+      --line: rgba(31, 38, 34, 0.1);
+      --accent: #ff6a3d;
+      --teal: #109891;
+      --gold: #ffc95c;
+      --shadow: 0 24px 70px rgba(65, 44, 24, 0.12);
+      --radius: 28px;
+      --radius-sm: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-snap-type: y mandatory; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(255, 201, 92, 0.45), transparent 28%),
+        radial-gradient(circle at 90% 12%, rgba(16, 152, 145, 0.18), transparent 24%),
+        linear-gradient(135deg, #f6f1e6 0%, #eee7d8 52%, #f8f3ea 100%);
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(31, 38, 34, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(31, 38, 34, 0.035) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.55), transparent 85%);
+    }
+
+    .shell {
+      width: min(calc(100vw - 44px), 1500px);
+      margin: 0 auto;
+      padding: 22px 0;
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 22px;
+    }
+
+    .sidebar,
+    .slide,
+    .card,
+    .timeline__item,
+    .step,
+    .flow__item {
+      border: 1px solid var(--line);
+      background: var(--paper);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 22px;
+      height: calc(100svh - 44px);
+      padding: 18px;
+      border-radius: 30px;
+      display: grid;
+      grid-template-rows: auto auto auto 1fr auto;
+      gap: 18px;
+    }
+
+    .sidebar__meta,
+    .slide__meta,
+    .label {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .sidebar__meta,
+    .slide__meta { color: var(--muted); }
+
+    .sidebar__title,
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      font-family: "Unbounded", sans-serif;
+      font-weight: 500;
+      letter-spacing: -0.04em;
+      line-height: 1.05;
+    }
+
+    .sidebar__title { font-size: 24px; }
+    h1 { font-size: clamp(42px, 7vw, 82px); max-width: 11ch; }
+    h2 { font-size: clamp(30px, 4.6vw, 56px); max-width: 13ch; }
+    h3 { font-size: 22px; line-height: 1.14; }
+
+    .sidebar__copy,
+    .lede,
+    .body,
+    .card p,
+    .timeline__item p,
+    .step p,
+    .flow__item p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.56;
+    }
+
+    .nav {
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+
+    .nav a {
+      display: grid;
+      grid-template-columns: 36px 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      border-radius: 16px;
+      color: var(--muted);
+      text-decoration: none;
+      border: 1px solid transparent;
+      transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+    }
+
+    .nav a:hover,
+    .nav a:focus-visible,
+    .nav a.is-active {
+      outline: none;
+      transform: translateX(2px);
+      background: rgba(255, 255, 255, 0.65);
+      border-color: rgba(255, 106, 61, 0.18);
+      color: var(--ink);
+    }
+
+    .nav__num,
+    .label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: fit-content;
+      min-width: 36px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(31, 38, 34, 0.06);
+    }
+
+    .sidebar__controls,
+    .fab-wrap {
+      display: flex;
+      gap: 10px;
+    }
+
+    .ghost,
+    .fab {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      font: inherit;
+      cursor: pointer;
+      transition: transform 160ms ease, background 160ms ease;
+    }
+
+    .ghost {
+      flex: 1;
+      padding: 12px 14px;
+      background: rgba(31, 38, 34, 0.07);
+    }
+
+    .ghost:hover,
+    .ghost:focus-visible,
+    .fab:hover,
+    .fab:focus-visible {
+      outline: none;
+      transform: translateY(-1px);
+    }
+
+    .slides { display: grid; gap: 22px; }
+
+    .slide {
+      min-height: calc(100svh - 44px);
+      border-radius: 34px;
+      padding: clamp(24px, 4vw, 50px);
+      position: relative;
+      scroll-snap-align: start;
+      overflow: hidden;
+      opacity: 0.45;
+      transform: translateY(24px) scale(0.99);
+      transition: opacity 420ms ease, transform 420ms ease;
+    }
+
+    .slide::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at top right, rgba(16, 152, 145, 0.1), transparent 28%),
+        radial-gradient(circle at bottom left, rgba(255, 106, 61, 0.12), transparent 32%);
+      pointer-events: none;
+    }
+
+    .slide.is-visible { opacity: 1; transform: none; }
+    .slide--ink {
+      color: #f6f1e6;
+      background: linear-gradient(135deg, #1f2622 0%, #23312d 50%, #151f1c 100%);
+      border-color: rgba(246, 241, 230, 0.1);
+    }
+    .slide--ink .slide__meta,
+    .slide--ink .lede,
+    .slide--ink .body,
+    .slide--ink .card p,
+    .slide--ink .timeline__item p,
+    .slide--ink .step p,
+    .slide--ink .flow__item p { color: rgba(246, 241, 230, 0.8); }
+    .slide--ink .card,
+    .slide--ink .timeline__item,
+    .slide--ink .step,
+    .slide--ink .flow__item {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.08);
+      box-shadow: none;
+    }
+
+    .slide--accent {
+      background:
+        radial-gradient(circle at top right, rgba(255, 201, 92, 0.36), transparent 24%),
+        linear-gradient(135deg, #fff8eb 0%, #f6ecde 52%, #fff9ef 100%);
+    }
+
+    .slide__meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+
+    .hero,
+    .split,
+    .grid-2,
+    .grid-3,
+    .grid-4,
+    .timeline,
+    .flow,
+    .steps {
+      display: grid;
+      gap: 16px;
+    }
+
+    .hero,
+    .split { grid-template-columns: 1.18fr 0.82fr; align-items: stretch; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4,
+    .timeline { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .flow { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    .card,
+    .timeline__item,
+    .step,
+    .flow__item {
+      border-radius: var(--radius-sm);
+      padding: 20px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-card {
+      padding: 26px;
+      border-radius: var(--radius);
+      background:
+        radial-gradient(circle at bottom right, rgba(16, 152, 145, 0.14), transparent 28%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 248, 236, 0.72));
+    }
+
+    .kicker {
+      display: inline-flex;
+      width: fit-content;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(255, 106, 61, 0.12);
+      color: var(--accent);
+    }
+
+    .tags { display: flex; flex-wrap: wrap; gap: 10px; }
+    .tag {
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.58);
+      font-size: 13px;
+    }
+
+    .metric strong {
+      display: block;
+      margin-bottom: 10px;
+      font-family: "Unbounded", sans-serif;
+      font-size: 34px;
+      line-height: 1;
+      letter-spacing: -0.05em;
+    }
+
+    .timeline__item .label,
+    .step .label,
+    .card .label { margin-bottom: 12px; color: var(--muted); }
+
+    .flow__item::after {
+      content: "→";
+      position: absolute;
+      right: -12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--accent);
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    .flow__item:last-child::after { display: none; }
+
+    .fab-wrap {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 20;
+    }
+
+    .fab {
+      width: 52px;
+      height: 52px;
+      display: grid;
+      place-items: center;
+      background: rgba(31, 38, 34, 0.9);
+      color: #f6f1e6;
+      box-shadow: 0 18px 36px rgba(31, 38, 34, 0.24);
+      font-size: 20px;
+    }
+
+    @media (max-width: 1180px) {
+      .shell { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; }
+      .nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 960px) {
+      .hero,
+      .split,
+      .grid-2,
+      .grid-3,
+      .grid-4,
+      .timeline,
+      .flow,
+      .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 720px) {
+      .shell { width: min(calc(100vw - 18px), 1500px); padding: 9px 0 18px; gap: 12px; }
+      .hero,
+      .split,
+      .grid-2,
+      .grid-3,
+      .grid-4,
+      .timeline,
+      .flow,
+      .steps { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .slide { min-height: auto; padding: 22px 18px 24px; border-radius: 24px; }
+      .flow__item::after { content: "↓"; right: 50%; top: auto; bottom: -16px; transform: translateX(50%); }
+    }
+
+    @media print {
+      html { scroll-snap-type: none; }
+      body::before, .sidebar, .fab-wrap { display: none; }
+      .shell { display: block; width: auto; margin: 0; padding: 0; }
+      .slide { min-height: auto; border-radius: 0; box-shadow: none; page-break-after: always; opacity: 1; transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar" aria-label="Навигация по презентации">
+      <div class="sidebar__meta">
+        <span>Part II Only</span>
+        <span id="counter">01 / 09</span>
+      </div>
+      <h2 class="sidebar__title">Внешний digital-отдел</h2>
+      <p class="sidebar__copy">
+        Отдельная веб-презентация по второй части документа: сайты, боты, автоматизация и подписная модель роста.
+      </p>
+      <nav class="nav" id="nav">
+        <a href="#slide-1"><span class="nav__num">01</span><span>Оффер и идея</span></a>
+        <a href="#slide-2"><span class="nav__num">02</span><span>Что продаём</span></a>
+        <a href="#slide-3"><span class="nav__num">03</span><span>Продуктовая матрица</span></a>
+        <a href="#slide-4"><span class="nav__num">04</span><span>План на 12 месяцев</span></a>
+        <a href="#slide-5"><span class="nav__num">05</span><span>Сайты и платформы</span></a>
+        <a href="#slide-6"><span class="nav__num">06</span><span>Автоматизации</span></a>
+        <a href="#slide-7"><span class="nav__num">07</span><span>Боты и операционка</span></a>
+        <a href="#slide-8"><span class="nav__num">08</span><span>Путь проекта</span></a>
+        <a href="#slide-9"><span class="nav__num">09</span><span>Риски и решения</span></a>
+      </nav>
+      <div class="sidebar__controls">
+        <button class="ghost" type="button" data-direction="-1">Назад</button>
+        <button class="ghost" type="button" data-direction="1">Дальше</button>
+      </div>
+    </aside>
+
+    <main class="slides" id="slides">
+      <section class="slide slide--accent" id="slide-1" data-title="Оффер и идея">
+        <div class="slide__meta">
+          <span>Часть II / Веб-презентация</span>
+          <span>Digital Business System</span>
+        </div>
+        <div class="hero">
+          <div>
+            <div class="label kicker">Не разработка ради разработки</div>
+            <h1>Сайты, боты и автоматизация как внешний digital-отдел</h1>
+            <p class="lede">
+              Направление продаёт не отдельные артефакты, а систему роста и порядка:
+              сайт собирает лиды, бот отвечает и квалифицирует, автоматизации убирают
+              ручную рутину, а сопровождение переводит клиента на ежемесячную подписку.
+            </p>
+            <div class="tags">
+              <span class="tag">4 базовых продукта</span>
+              <span class="tag">2–4 проекта в месяц</span>
+              <span class="tag">8–15 клиентов на сопровождении</span>
+            </div>
+          </div>
+          <div class="card hero-card">
+            <div class="label">Позиционирование</div>
+            <h3>Строим цифровую систему, чтобы бизнес не терял лиды и не тонул в ручной рутине.</h3>
+            <p class="body">
+              Вход в продажу идёт через аудит сайта, воронки и процессов.
+              Основная ценность не в коде, а в управляемом результате:
+              заявки, скорость обработки, прозрачность и повторяемость.
+            </p>
+            <div class="tags">
+              <span class="tag">Аудит</span>
+              <span class="tag">Архитектура</span>
+              <span class="tag">Интеграции</span>
+              <span class="tag">Подписка</span>
+            </div>
+          </div>
+        </div>
+        <div class="grid-4">
+          <article class="card metric">
+            <div class="label">Целевой формат</div>
+            <strong>System Service</strong>
+            <p>Уход от мелких заказов к повторяемой сервисной модели.</p>
+          </article>
+          <article class="card metric">
+            <div class="label">Оффер</div>
+            <strong>Leads + Ops</strong>
+            <p>Сайт, CRM, бот, уведомления и регламент как единый контур.</p>
+          </article>
+          <article class="card metric">
+            <div class="label">Модель роста</div>
+            <strong>Case Engine</strong>
+            <p>Кейсы, шаблоны и нишевые офферы вместо хаотичных универсальных услуг.</p>
+          </article>
+          <article class="card metric">
+            <div class="label">Финал</div>
+            <strong>Recurring</strong>
+            <p>Каждый проект должен иметь маршрут в сопровождение и развитие.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="slide slide--ink" id="slide-2" data-title="Что продаём">
+        <div class="slide__meta">
+          <span>Суть модели</span>
+          <span>Раздел 7</span>
+        </div>
+        <div class="split">
+          <div>
+            <div class="label kicker">Главный сдвиг</div>
+            <h2>Продавать нужно не сайт или бота, а управляемый цифровой контур бизнеса.</h2>
+            <p class="lede">
+              Клиент должен видеть не набор исполнителей, а внешний отдел,
+              который закрывает захват лида, обработку, маршрутизацию,
+              контроль конверсии и развитие системы после запуска.
+            </p>
+          </div>
+          <article class="card">
+            <div class="label">Формула ценности</div>
+            <h3>Сайт генерирует входящий поток. Бот ускоряет ответ. Автоматизация убирает ручную работу. Сопровождение удерживает клиента в системе.</h3>
+            <p class="body">В продаже важнее показать порядок и результат, чем перечислить технологии.</p>
+          </article>
+        </div>
+        <div class="grid-3">
+          <article class="card">
+            <div class="label">Для клиента</div>
+            <h3>Порядок вместо хаоса</h3>
+            <p>Свести сайт, CRM, уведомления и внутренние действия в один понятный контур.</p>
+          </article>
+          <article class="card">
+            <div class="label">Для продаж</div>
+            <h3>Вход через диагностику</h3>
+            <p>Сначала показывать потери лидов и ручные узкие места, а не перечень технологий.</p>
+          </article>
+          <article class="card">
+            <div class="label">Для бизнеса</div>
+            <h3>Подписная модель</h3>
+            <p>Проект сразу проектируется так, чтобы его можно было вести, развивать и апсейлить.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="slide" id="slide-3" data-title="Продуктовая матрица">
+        <div class="slide__meta">
+          <span>Продукты</span>
+          <span>4 базовых направления</span>
+        </div>
+        <div>
+          <div class="label kicker">Продуктовая матрица</div>
+          <h2>Четыре продукта, которые должны работать как единая линейка.</h2>
+          <p class="lede">
+            Каждый следующий продукт усиливает предыдущий и повышает шанс перевода клиента на сопровождение.
+          </p>
+        </div>
+        <div class="grid-4">
+          <article class="card">
+            <div class="label">01</div>
+            <h3>Сайт под ключ</h3>
+            <p>Лендинг, корпоративный сайт, каталог, квиз, посадочная под рекламу.</p>
+          </article>
+          <article class="card">
+            <div class="label">02</div>
+            <h3>Ведение и развитие</h3>
+            <p>Правки, новые блоки, аналитика, контроль форм и работа с конверсией.</p>
+          </article>
+          <article class="card">
+            <div class="label">03</div>
+            <h3>Автоматизация</h3>
+            <p>Заявки, CRM, уведомления, задачи, документы и маршрутизация.</p>
+          </article>
+          <article class="card">
+            <div class="label">04</div>
+            <h3>Боты</h3>
+            <p>Telegram-боты для заявок, FAQ, записи, уведомлений и внутренних процессов.</p>
+          </article>
+        </div>
+        <div class="grid-2">
+          <article class="card">
+            <div class="label">Логика апсейла</div>
+            <h3>Сайт → CRM → Бот → Автоматизации → Сопровождение</h3>
+            <p>Линейка должна собираться в систему, а не продаваться отдельными кусками.</p>
+          </article>
+          <article class="card">
+            <div class="label">Практический вывод</div>
+            <h3>Не дробить оффер</h3>
+            <p>Чем целостнее выглядит решение, тем проще клиенту понять его ценность и длительность работы.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="slide slide--accent" id="slide-4" data-title="План на 12 месяцев">
+        <div class="slide__meta">
+          <span>Раздел 8</span>
+          <span>12-месячный маршрут</span>
+        </div>
+        <div>
+          <div class="label kicker">Бизнес-план</div>
+          <h2>Цель года: превратить хаотичные заказы в системный сервис с повторяемой воронкой.</h2>
+          <p class="lede">
+            Итоговая точка: 2–4 проекта в месяц, шаблонные пакеты, понятный стек,
+            8–15 клиентов на сопровождении, кейсы и дисциплина в управлении.
+          </p>
+        </div>
+        <div class="timeline">
+          <article class="timeline__item"><div class="label">Месяц 1</div><h3>Упаковка</h3><p>Оффер, сайт-витрина, КП, бриф, договор, аудит, смета.</p></article>
+          <article class="timeline__item"><div class="label">Месяц 2</div><h3>Шаблоны</h3><p>Лендинг, корпоративный сайт, типовой бот, сценарии автоматизации.</p></article>
+          <article class="timeline__item"><div class="label">Месяц 3</div><h3>Первые продажи</h3><p>100–150 касаний, диагностики, 1–2 проекта, первый кейс.</p></article>
+          <article class="timeline__item"><div class="label">Месяц 4</div><h3>Кейсы</h3><p>Отзывы, нишевые офферы, трекер конверсий и доупаковка.</p></article>
+          <article class="timeline__item"><div class="label">Месяц 5–6</div><h3>Стабилизация</h3><p>Учёт времени, регламент правок, база знаний, понятные сметы.</p></article>
+          <article class="timeline__item"><div class="label">Месяц 7–8</div><h3>Подписка</h3><p>Сопровождение сайтов, поддержка автоматизаций и growth-пакеты.</p></article>
+          <article class="timeline__item"><div class="label">Месяц 9–10</div><h3>Команда</h3><p>Дизайнер, технарь, интегратор, помощник по проектам.</p></article>
+          <article class="timeline__item"><div class="label">Месяц 11–12</div><h3>Масштаб</h3><p>KPI, партнёрки, сегментация ниш, контроль качества, план на второй год.</p></article>
+        </div>
+      </section>
+
+      <section class="slide" id="slide-5" data-title="Сайты и платформы">
+        <div class="slide__meta">
+          <span>Раздел 9</span>
+          <span>Инструменты для сайтов</span>
+        </div>
+        <div class="split">
+          <div>
+            <div class="label kicker">Сайты</div>
+            <h2>Нужен не культ платформы, а логика выбора под задачу и маржу.</h2>
+            <p class="lede">
+              Платформа определяется сложностью проекта, скоростью запуска, требованиями к контенту
+              и объёмом кастомной логики. Лишний стек быстро съедает прибыль.
+            </p>
+          </div>
+          <article class="card">
+            <div class="label">Принцип выбора</div>
+            <h3>Брать самый простой стек, который честно закрывает бизнес-задачу клиента.</h3>
+            <p>Не добавлять кастомную разработку там, где типовая платформа уже решает задачу.</p>
+          </article>
+        </div>
+        <div class="grid-4">
+          <article class="card"><div class="label">Tilda</div><h3>Быстрый запуск</h3><p>Лендинги, сайты услуг, быстрый MVP. Хороша, когда важны сроки и упаковка.</p></article>
+          <article class="card"><div class="label">Webflow</div><h3>Сильный визуал</h3><p>Сложный визуальный сайт и CMS. Автоматизации лучше выносить наружу.</p></article>
+          <article class="card"><div class="label">WordPress</div><h3>Гибкий контур</h3><p>Корпоративные сайты, блог, каталог, SEO. Нужен контроль архитектуры и плагинов.</p></article>
+          <article class="card"><div class="label">Custom / Next.js</div><h3>Только для сложности</h3><p>Нестандартные интерфейсы и логика. На старте опасно без команды и маржи.</p></article>
+        </div>
+      </section>
+
+      <section class="slide" id="slide-6" data-title="Автоматизации">
+        <div class="slide__meta">
+          <span>Инструменты</span>
+          <span>Автоматизация как связка систем</span>
+        </div>
+        <div>
+          <div class="label kicker">Автоматизации</div>
+          <h2>Автоматизация начинается не с сервиса, а со схемы потока данных.</h2>
+          <p class="lede">
+            Правильная логика: форма, CRM, бот, задачи и уведомления должны работать как одна цепочка,
+            а не как набор разрозненных интеграций.
+          </p>
+        </div>
+        <div class="flow">
+          <article class="flow__item"><h3>Форма</h3><p>Собирает лид, заказ или внутренний запрос.</p></article>
+          <article class="flow__item"><h3>CRM</h3><p>Фиксирует статус, владельца и этап обработки.</p></article>
+          <article class="flow__item"><h3>Бот</h3><p>Квалифицирует, уточняет и отправляет уведомления.</p></article>
+          <article class="flow__item"><h3>Задачи</h3><p>Запускают внутренние действия по маршруту.</p></article>
+          <article class="flow__item"><h3>Отчётность</h3><p>Даёт прозрачность, где теряются время и лиды.</p></article>
+        </div>
+        <div class="grid-4">
+          <article class="card"><div class="label">n8n</div><h3>Контроль и гибкость</h3><p>Self-hosted автоматизации, API и сложные цепочки для нестандартных интеграций.</p></article>
+          <article class="card"><div class="label">Make</div><h3>Скорость запуска</h3><p>Визуальные сценарии и много коннекторов. Удобен для быстрых пилотов.</p></article>
+          <article class="card"><div class="label">Airtable</div><h3>Операционная база</h3><p>Умная таблица для лёгкой CRM и процессов. Не заменяет сложную CRM.</p></article>
+          <article class="card"><div class="label">Bitrix24</div><h3>Единый контур</h3><p>CRM, сделки, задачи и автоматизация стадий. Объём внедрения нужно жёстко ограничивать.</p></article>
+        </div>
+      </section>
+
+      <section class="slide slide--ink" id="slide-7" data-title="Боты и операционка">
+        <div class="slide__meta">
+          <span>Боты и управление проектами</span>
+          <span>Инструменты операционки</span>
+        </div>
+        <div>
+          <div class="label kicker">Боты и операционка</div>
+          <h2>Бот и проектная дисциплина не дополняют продукт. Они и есть часть продукта.</h2>
+          <p class="lede">
+            Если не контролировать прототипы, документы и трекер задач, проект ломается не по коду,
+            а по ожиданиям, срокам и размытым договорённостям.
+          </p>
+        </div>
+        <div class="grid-4">
+          <article class="card"><div class="label">Telegram Bot API</div><h3>Сценарии, а не меню</h3><p>Заявки, записи, FAQ, уведомления и внутренние процессы. Важна логика переходов.</p></article>
+          <article class="card"><div class="label">Figma</div><h3>Согласование до сборки</h3><p>Прототипы страниц и сценариев. Не должна превращаться в бесконечный арт-процесс.</p></article>
+          <article class="card"><div class="label">Miro</div><h3>Карта процессов</h3><p>Маршруты, автоматизации, схема потока данных. Нужен порядок, иначе доска станет свалкой.</p></article>
+          <article class="card"><div class="label">Notion / Docs / Sheets</div><h3>Документный стандарт</h3><p>Сметы, регламенты, база знаний и рабочие файлы для повторяемого сервиса.</p></article>
+        </div>
+        <div class="grid-3">
+          <article class="card"><div class="label">Трекер задач</div><h3>Trello / ClickUp / YouTrack</h3><p>Нужны, когда проектов больше двух и требуется управляемая дисциплина.</p></article>
+          <article class="card"><div class="label">Операционный вывод</div><h3>Единый стандарт файлов</h3><p>Бриф, ТЗ, смета, тестовый чек-лист и инструкция запуска должны быть шаблонами заранее.</p></article>
+          <article class="card"><div class="label">Практический смысл</div><h3>Контроль ожиданий</h3><p>Именно документы и сценарии защищают маржу сильнее, чем дополнительные часы кодинга.</p></article>
+        </div>
+      </section>
+
+      <section class="slide" id="slide-8" data-title="Путь проекта">
+        <div class="slide__meta">
+          <span>Раздел 10</span>
+          <span>От лида до сопровождения</span>
+        </div>
+        <div>
+          <div class="label kicker">Путь проекта</div>
+          <h2>Процесс должен быть видимым: от входа через аудит до роста на подписке.</h2>
+          <p class="lede">
+            Это не просто этапы производства. Это логика продажи, управления scope и перевода клиента
+            в долгосрочную работу после запуска.
+          </p>
+        </div>
+        <div class="steps">
+          <article class="step"><div class="label">1</div><h3>Вход через аудит</h3><p>Разбор сайта, воронки, потерь лидов или ручных процессов вместо просьбы «заказать сайт».</p></article>
+          <article class="step"><div class="label">2</div><h3>Диагностика</h3><p>Понять каналы лидов, потери, ответственных, CRM и текущий набор сервисов.</p></article>
+          <article class="step"><div class="label">3</div><h3>Архитектура</h3><p>Выбрать связку сайт + CRM + бот + автоматизация. Не тащить лишнее.</p></article>
+          <article class="step"><div class="label">4</div><h3>Коммерческое предложение</h3><p>Показать проблему, потери, решение, сроки, стоимость и ожидаемый результат.</p></article>
+          <article class="step"><div class="label">5</div><h3>Бриф и ТЗ</h3><p>Зафиксировать структуру сайта, тексты, сценарии, статусы лидов, доступы и уведомления.</p></article>
+          <article class="step"><div class="label">6</div><h3>Прототип</h3><p>Собрать карту страниц, блоков, переходов и сценариев до этапа сборки.</p></article>
+          <article class="step"><div class="label">7</div><h3>Дизайн и сборка</h3><p>Собрать сайт и интерфейсы на выбранном стеке без расползания scope.</p></article>
+          <article class="step"><div class="label">8</div><h3>Интеграции</h3><p>Подключить формы, CRM, бота, аналитику, документы, задачи и уведомления.</p></article>
+          <article class="step"><div class="label">9</div><h3>Тестирование</h3><p>Проверить формы, дубли, статусы, уведомления, мобильную версию и ошибки сценариев.</p></article>
+          <article class="step"><div class="label">10</div><h3>Запуск</h3><p>Публикация, домен, права, инструкция, доступы и обучение клиента.</p></article>
+          <article class="step"><div class="label">11</div><h3>Сопровождение и рост</h3><p>Правки, аналитика, новые страницы, автоматизации и последовательные апсейлы.</p></article>
+        </div>
+      </section>
+
+      <section class="slide slide--accent" id="slide-9" data-title="Риски и решения">
+        <div class="slide__meta">
+          <span>Раздел 11</span>
+          <span>Риски, ошибки и ключевые решения</span>
+        </div>
+        <div>
+          <div class="label kicker">Управление риском</div>
+          <h2>Самые опасные проблемы в digital-направлении возникают не из кода, а из бардака в ожиданиях и границах.</h2>
+          <p class="lede">
+            Управление scope, стандартами и экономикой проекта важнее, чем попытка делать всё для всех.
+          </p>
+        </div>
+        <div class="grid-2">
+          <article class="card">
+            <div class="label">Критические ошибки</div>
+            <h3>Что ломает маржу и доверие</h3>
+            <p>Брать всё подряд. Продавать дизайн вместо результата. Не фиксировать ТЗ и границы правок. Не считать часы и маржу. Каждый раз собирать стек с нуля. Не переводить клиента в сопровождение.</p>
+          </article>
+          <article class="card">
+            <div class="label">Ключевые решения</div>
+            <h3>Что превращает направление в систему</h3>
+            <p>Входить через аудит. Выбрать один основной стек и один запасной. К каждому сайту допродавать CRM, бота или автоматизацию. Любой проект переводить в подписку. Строить шаблоны на каждый этап.</p>
+          </article>
+        </div>
+        <div class="card">
+          <div class="label">Итоговая модель</div>
+          <h3>Узкий вход через аудит, понятный оффер, стандартизированный стек, чёткие этапы и подписная логика дохода.</h3>
+          <p>Именно так внешнее digital-направление становится B2B-сервисом, а не набором разовых задач.</p>
+          <div class="tags">
+            <span class="tag">Audit-first</span>
+            <span class="tag">One core stack</span>
+            <span class="tag">Subscription-ready</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="fab-wrap" aria-label="Быстрая навигация">
+    <button class="fab" type="button" data-direction="-1" aria-label="Предыдущий слайд">↑</button>
+    <button class="fab" type="button" data-direction="1" aria-label="Следующий слайд">↓</button>
+  </div>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll(".slide"));
+    const links = Array.from(document.querySelectorAll(".nav a"));
+    const counter = document.getElementById("counter");
+    let activeIndex = 0;
+
+    const setActive = (index) => {
+      activeIndex = index;
+      links.forEach((link, linkIndex) => {
+        link.classList.toggle("is-active", linkIndex === index);
+      });
+      counter.textContent = `${String(index + 1).padStart(2, "0")} / ${String(slides.length).padStart(2, "0")}`;
+    };
+
+    const goToSlide = (index) => {
+      const target = slides[Math.max(0, Math.min(slides.length - 1, index))];
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const index = slides.indexOf(entry.target);
+        if (index < 0) return;
+        entry.target.classList.toggle("is-visible", entry.isIntersecting);
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.55) {
+          setActive(index);
+        }
+      });
+    }, { threshold: [0.2, 0.55, 0.8] });
+
+    slides.forEach((slide) => observer.observe(slide));
+
+    document.querySelectorAll("[data-direction]").forEach((button) => {
+      button.addEventListener("click", () => goToSlide(activeIndex + Number(button.dataset.direction)));
+    });
+
+    links.forEach((link, index) => {
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        goToSlide(index);
+      });
+    });
+
+    window.addEventListener("keydown", (event) => {
+      if (["ArrowDown", "PageDown", " "].includes(event.key)) {
+        event.preventDefault();
+        goToSlide(activeIndex + 1);
+      }
+      if (["ArrowUp", "PageUp"].includes(event.key)) {
+        event.preventDefault();
+        goToSlide(activeIndex - 1);
+      }
+      if (event.key === "Home") {
+        event.preventDefault();
+        goToSlide(0);
+      }
+      if (event.key === "End") {
+        event.preventDefault();
+        goToSlide(slides.length - 1);
+      }
+    });
+
+    setActive(0);
+    slides[0].classList.add("is-visible");
+  </script>
+</body>
+</html>
